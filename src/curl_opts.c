@@ -10,7 +10,7 @@
 
 #include "curl_opts.h"
 
-static void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
+void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
     JsonbIteratorToken jbItk;
     JsonbValue  jbV;
     JsonbIterator *jbIt;
