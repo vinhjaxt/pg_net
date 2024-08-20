@@ -258,7 +258,7 @@ static void consume_request_queue(CURLM *curl_mhandle){
     // vinhjaxt patch
     Datum curlOptsBin = SPI_getbinval(SPI_tuptable->vals[j], SPI_tuptable->tupdesc, 7, &tupIsNull);
     if (!tupIsNull) {
-      Jsonb *curlOpts = DatumGetJsonb(curlOptsBin);
+      Jsonb *curlOpts = DatumGetJsonbP(curlOptsBin);
       cdata->curlOpts = curlOpts;
     }
 
