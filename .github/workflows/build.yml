@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        PGVER: [12]
+        PGVER: [16]
     steps:
     - uses: actions/checkout@v3
 
