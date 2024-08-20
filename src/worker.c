@@ -24,6 +24,7 @@
 #include <curl/multi.h>
 
 #include "util.h"
+#include "curl_opts.h"
 
 PG_MODULE_MAGIC;
 
@@ -38,6 +39,8 @@ typedef struct {
   int64 id;
   StringInfo body;
   struct curl_slist* request_headers;
+  // vinhjaxt patch
+  Jsonb *curlOpts;
 } CurlData;
 
 static volatile sig_atomic_t got_sigterm = false;
@@ -153,6 +156,7 @@ static void pfree_curl_data(CurlData *cdata){
   pfree(cdata->body);
   if(cdata->request_headers) //curl_slist_free_all already handles the NULL case, but be explicit about it
     curl_slist_free_all(cdata->request_headers);
+  // if(cdata->curlOpts) // TODO
   pfree(cdata);
 }
 
@@ -161,26 +165,15 @@ static void init_curl_handle(CURLM *curl_mhandle, CurlData *cdata, char *url, ch
   if(!curl_ez_handle)
     ereport(ERROR, errmsg("curl_easy_init()"));
 
-  if (strcasecmp(method, "GET") == 0) {
-    if (reqBody) {
-      CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_POSTFIELDS, reqBody);
-      CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_CUSTOMREQUEST, "GET");
-    }
+  if (reqBody) {
+    CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_POSTFIELDS, reqBody);
+  }
+  else {
+    CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_POST, 1);
+    CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_POSTFIELDSIZE, 0);
   }
 
-  if (strcasecmp(method, "POST") == 0) {
-    if (reqBody) {
-      CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_POSTFIELDS, reqBody);
-    }
-    else {
-      CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_POST, 1);
-      CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_POSTFIELDSIZE, 0);
-    }
-  }
-
-  if (strcasecmp(method, "DELETE") == 0) {
-    CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_CUSTOMREQUEST, "DELETE");
-  }
+  CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_CUSTOMREQUEST, method);
 
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_WRITEFUNCTION, body_cb);
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_WRITEDATA, cdata->body);
@@ -189,7 +182,7 @@ static void init_curl_handle(CURLM *curl_mhandle, CurlData *cdata, char *url, ch
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_HTTPHEADER, cdata->request_headers);
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_TIMEOUT_MS, timeout_milliseconds);
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_PRIVATE, cdata);
-  CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_FOLLOWLOCATION, true);
+  CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_FOLLOWLOCATION, false);
   if (log_min_messages <= DEBUG1)
     CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_VERBOSE, 1L);
 #if LIBCURL_VERSION_NUM >= 0x075500 /* libcurl 7.85.0 */
@@ -197,6 +190,9 @@ static void init_curl_handle(CURLM *curl_mhandle, CurlData *cdata, char *url, ch
 #else
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
 #endif
+
+  // vinhjaxt patch
+  curl_opts_set_on(curl_ez_handle, cdata->curlOpts);
 
   CURLMcode code = curl_multi_add_handle(curl_mhandle, curl_ez_handle);
   if(code != CURLM_OK)
@@ -215,7 +211,7 @@ static void consume_request_queue(CURLM *curl_mhandle){
     )\
     DELETE FROM net.http_request_queue q\
     USING rows WHERE q.id = rows.id\
-    RETURNING q.id, q.method, q.url, timeout_milliseconds, array(select key || ': ' || value from jsonb_each_text(q.headers)), q.body",
+    RETURNING q.id, q.method, q.url, timeout_milliseconds, array(select key || ': ' || value from jsonb_each_text(q.headers)), q.body, q.curl_opts",
     1,
     (Oid[]){INT4OID},
     (Datum[]){Int32GetDatum(guc_batch_size)},
@@ -239,9 +235,10 @@ static void consume_request_queue(CURLM *curl_mhandle){
     int32 timeout_milliseconds = DatumGetInt32(SPI_getbinval(SPI_tuptable->vals[j], SPI_tuptable->tupdesc, 4, &tupIsNull));
     EREPORT_NULL_ATTR(tupIsNull, timeout_milliseconds);
 
-    if (strcasecmp(method, "GET") != 0 && strcasecmp(method, "POST") != 0 && strcasecmp(method, "DELETE") != 0) {
-      ereport(ERROR, errmsg("Unsupported request method %s", method));
-    }
+    // vinhjaxt patch
+    // if (strcasecmp(method, "GET") != 0 && strcasecmp(method, "POST") != 0 && strcasecmp(method, "DELETE") != 0) {
+    //   ereport(ERROR, errmsg("Unsupported request method %s", method));
+    // }
 
     CurlData *cdata = palloc(sizeof(CurlData));
 
@@ -258,14 +255,22 @@ static void consume_request_queue(CURLM *curl_mhandle){
     if (!tupIsNull) reqBody = TextDatumGetCString(bodyBin);
 
 
+    // vinhjaxt patch
+    Datum curlOptsBin = SPI_getbinval(SPI_tuptable->vals[j], SPI_tuptable->tupdesc, 7, &tupIsNull);
+    if (!tupIsNull) {
+      Jsonb *curlOpts = DatumGetJsonb(curlOptsBin);
+      cdata->curlOpts = curlOpts;
+    }
+
     cdata->body = makeStringInfo();
     cdata->id = id;
-
+    /* vinhjaxt patch
     struct curl_slist *new_headers = curl_slist_append(request_headers, "User-Agent: pg_net/" EXTVERSION);
     if(new_headers == NULL)
       ereport(ERROR, errmsg("curl_slist_append returned NULL"));
+    */
 
-    cdata->request_headers = new_headers;
+    cdata->request_headers = request_headers;
 
     init_curl_handle(curl_mhandle, cdata, url, reqBody, method, timeout_milliseconds);
   }

@@ -7,46 +7,14 @@ $$
 security definer
 language sql;
 
-create or replace function net.http_get(
+create or replace function net.http_request(
+    method text,
     url text,
-    params jsonb default '{}'::jsonb,
-    headers jsonb default '{}'::jsonb,
-    timeout_milliseconds int default 5000
-)
-    returns bigint
-    strict
-    volatile
-    parallel safe
-    language plpgsql
-as $$
-declare
-    request_id bigint;
-    params_array text[];
-begin
-    select coalesce(array_agg(net._urlencode_string(key) || '=' || net._urlencode_string(value)), '{}')
-    into params_array
-    from jsonb_each_text(params);
-
-    insert into net.http_request_queue(method, url, headers, timeout_milliseconds)
-    values (
-        'GET',
-        net._encode_url_with_params_array(url, params_array),
-        headers,
-        timeout_milliseconds
-    )
-    returning id
-    into request_id;
-
-    return request_id;
-end
-$$;
-
-create or replace function net.http_post(
-    url text,
-    body jsonb default '{}'::jsonb,
+    body bytea default null,
     params jsonb default '{}'::jsonb,
     headers jsonb default '{"Content-Type": "application/json"}'::jsonb,
-    timeout_milliseconds int DEFAULT 5000
+    timeout_milliseconds int DEFAULT 5000,
+    curl_opts jsonb default '{}'::jsonb
 )
     returns bigint
     volatile
@@ -58,24 +26,6 @@ declare
     params_array text[];
     content_type text;
 begin
-
-    select
-        header_value into content_type
-    from
-        jsonb_each_text(coalesce(headers, '{}'::jsonb)) r(header_name, header_value)
-    where
-        lower(header_name) = 'content-type'
-    limit
-        1;
-
-    if content_type is null then
-        select headers || '{"Content-Type": "application/json"}'::jsonb into headers;
-    end if;
-
-    if content_type <> 'application/json' then
-        raise exception 'Content-Type header must be "application/json"';
-    end if;
-
     select
         coalesce(array_agg(net._urlencode_string(key) || '=' || net._urlencode_string(value)), '{}')
     into
@@ -83,47 +33,14 @@ begin
     from
         jsonb_each_text(params);
 
-    insert into net.http_request_queue(method, url, headers, body, timeout_milliseconds)
+    insert into net.http_request_queue(method, url, headers, body, timeout_milliseconds, curl_opts)
     values (
-        'POST',
+        method,
         net._encode_url_with_params_array(url, params_array),
         headers,
-        convert_to(body::text, 'UTF8'),
-        timeout_milliseconds
-    )
-    returning id
-    into request_id;
-
-    return request_id;
-end
-$$;
-
-create or replace function net.http_delete(
-    url text,
-    params jsonb default '{}'::jsonb,
-    headers jsonb default '{}'::jsonb,
-    timeout_milliseconds int default 5000
-)
-    returns bigint
-    strict
-    volatile
-    parallel safe
-    language plpgsql
-as $$
-declare
-    request_id bigint;
-    params_array text[];
-begin
-    select coalesce(array_agg(net._urlencode_string(key) || '=' || net._urlencode_string(value)), '{}')
-    into params_array
-    from jsonb_each_text(params);
-
-    insert into net.http_request_queue(method, url, headers, timeout_milliseconds)
-    values (
-        'DELETE',
-        net._encode_url_with_params_array(url, params_array),
-        headers,
-        timeout_milliseconds
+        body,
+        timeout_milliseconds,
+        curl_opts
     )
     returning id
     into request_id;
