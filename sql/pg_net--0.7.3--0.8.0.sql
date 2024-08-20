@@ -12,7 +12,7 @@ create or replace function net.http_request(
     url text,
     body bytea default null,
     params jsonb default '{}'::jsonb,
-    headers jsonb default '{"Content-Type": "application/json"}'::jsonb,
+    headers jsonb default '{"User-Agent": "-"}'::jsonb,
     timeout_milliseconds int DEFAULT 5000,
     curl_opts jsonb default '{}'::jsonb
 )
