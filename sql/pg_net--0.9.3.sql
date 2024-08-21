@@ -2,6 +2,10 @@
 create extension if not exists pg_net;
 alter system set pg_net.database_name to 'app_db';
 select net.worker_restart();
+
+select * from net.http_request_queue;
+select * from net._http_response;
+select * from net.http_request('GET', 'https://1.1.1.1/cdn-cgi/trace');
 -- */
 
 create schema if not exists net;
@@ -136,7 +140,8 @@ as $$
 declare
     request_id bigint;
 begin
-    call net.http_add_queue(request_id, method, url, headers, body, timeout_milliseconds, curl_opts);
+    call net.http_add_queue(request_id, method, url, body, headers, timeout_milliseconds, curl_opts);
+    raise notice 'Log: %', COALESCE(request_id, 0);
     return net._http_collect_response(request_id, true);
 end
 $$;
@@ -145,7 +150,7 @@ $$;
 -- API: Public
 create or replace procedure net.http_add_queue(
     -- out value
-    request_id inout bigint,
+    inout request_id bigint,
     -- method for the request
     method text,
     -- url for the request
@@ -167,7 +172,10 @@ begin
     values (method, url, headers, body, timeout_milliseconds, curl_opts)
     returning id
     into request_id;
-    commit;
+
+    raise notice 'Log: %', COALESCE(request_id, 0);
+
+    COMMIT;
 end
 $$;
 

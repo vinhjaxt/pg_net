@@ -16,6 +16,10 @@ static void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
     JsonbValue  jbV;
     JsonbIterator *jbIt;
 
+    if (!curlOpts) {
+        return;
+    }
+
     if (!JB_ROOT_IS_OBJECT(curlOpts))
       ereport(ERROR, errmsg("curlOpts is not an object"));
 
