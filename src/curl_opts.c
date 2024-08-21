@@ -33,11 +33,11 @@ void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
         switch (jbV.type)
         {
             case jbvString: {
-                key = strtol(jbV.val.string.val, NULL, 10);
+                key = (CURLoption) strtol(jbV.val.string.val, NULL, 10);
                 break;
             }
             case jbvNumeric: {
-                key = DatumGetInt32(NumericGetDatum(jbV.val.numeric));
+                key = (CURLoption) DatumGetInt32(NumericGetDatum(jbV.val.numeric));
                 break;
             }
             default:
@@ -62,7 +62,7 @@ void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
             }
             case jbvNumeric: {
                 // long
-                CURL_EZ_SETOPT(curl_ez_handle, key, (long)DatumGetInt32(NumericGetDatum(jbV.val.numeric)));
+                CURL_EZ_SETOPT(curl_ez_handle, key, (long) DatumGetInt32(NumericGetDatum(jbV.val.numeric)));
                 break;
             }
             default:

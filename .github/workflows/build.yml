@@ -14,21 +14,11 @@ jobs:
 
     - name: Build
       run: |
-        sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg-snapshot main ${{ matrix.PGVER }}" > /etc/apt/sources.list.d/pgdg.list'
-        curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg >/dev/null
-        sudo apt-get update -y
-
-        sudo apt-get -y install postgresql-${{ matrix.PGVER }} postgresql-server-dev-${{ matrix.PGVER }}
-        sudo apt install -y libcurl4-openssl-dev
-
-        export PGDATA=/var/lib/postgresql/${{ matrix.PGVER }}/main
-        export PGETC=/etc/postgresql/${{ matrix.PGVER }}/main
-        export PGBIN=/usr/lib/postgresql/${{ matrix.PGVER }}/bin
-
-        export PATH=/usr/lib/postgresql/${{ matrix.PGVER }}/bin/:$PATH
-        export PG_CONFIG=/usr/lib/postgresql/${{ matrix.PGVER }}/bin/pg_config
-        export PG_CFLAGS=-Werror
-        make
+        docker run --rm -it -v .:/src:rw -w /src postgres:16-alpine sh -c '\
+          apk add --no-cache --virtual .build-deps ca-certificates git autoconf automake g++ gcc make $DOCKER_PG_LLVM_DEPS; \
+          apk add --no-cache curl-dev libcurl curl; \
+          make; \
+        '
 
     # Create release
     - name: Generate release tag
