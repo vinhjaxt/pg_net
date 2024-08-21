@@ -179,10 +179,12 @@ static void init_curl_handle(CURLM *curl_mhandle, CurlData *cdata, char *url, ch
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_WRITEDATA, cdata->body);
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_HEADER, 0L);
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_URL, url);
-  CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_HTTPHEADER, cdata->request_headers);
+
+  if (cdata->request_headers)
+    CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_HTTPHEADER, cdata->request_headers);
+
   CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_TIMEOUT_MS, timeout_milliseconds);
-  CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_PRIVATE, cdata);
-  CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_FOLLOWLOCATION, false);
+  CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_PRIVATE, cdata); // for curl multi to determine which request
   if (log_min_messages <= DEBUG1)
     CURL_EZ_SETOPT(curl_ez_handle, CURLOPT_VERBOSE, 1L);
 #if LIBCURL_VERSION_NUM >= 0x075500 /* libcurl 7.85.0 */

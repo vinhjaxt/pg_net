@@ -1,6 +1,16 @@
 #ifndef CURL_OPTS_H
 #define CURL_OPTS_H
 // Define functions
+/**
+* Utility function for to get curl version.
+*/
+Datum net_curl_version(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(net_curl_version);
+Datum net_curl_version(PG_FUNCTION_ARGS)
+{
+    PG_RETURN_TEXT_P(cstring_to_text(curl_version()));
+}
+
 static void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
     JsonbIteratorToken jbItk;
     JsonbValue  jbV;
