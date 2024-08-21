@@ -30,6 +30,7 @@ PG_MODULE_MAGIC;
 
 static char *guc_ttl = "6 hours";
 static int guc_batch_size = 500;
+static int guc_batch_wait = 1200;
 static char* guc_database_name = "postgres";
 
 void _PG_init(void);
@@ -309,9 +310,9 @@ static void insert_curl_responses(CURLM *curl_mhandle){
       ereport(ERROR, errmsg("error: curl_multi_perform() returned %d", res));
     }
 
-    /*wait at least 1 second(1000 ms) in case all responses are slow*/
+    /*wait at least 1 second(1500 ms) in case all responses are slow*/
     /*this avoids busy waiting and higher CPU usage*/
-    res = curl_multi_wait(curl_mhandle, NULL, 0, 1000, &numfds);
+    res = curl_multi_wait(curl_mhandle, NULL, 0, 1500, &numfds);
 
     if(res != CURLM_OK) {
       ereport(ERROR, errmsg("error: curl_multi_wait() returned %d", res));
@@ -364,7 +365,7 @@ void pg_net_worker(Datum main_arg) {
 
   BackgroundWorkerInitializeConnection(guc_database_name, NULL, 0);
 
-  elog(INFO, "pg_net_worker started with a config of: pg_net.ttl=%s, pg_net.batch_size=%d, pg_net.database_name=%s", guc_ttl, guc_batch_size, guc_database_name);
+  elog(INFO, "pg_net_worker started with a config of: pg_net.ttl=%s, pg_net.batch_size=%d, pg_net.batch_wait=%d, pg_net.database_name=%s", guc_ttl, guc_batch_size, guc_batch_wait, guc_database_name);
 
   int curl_ret = curl_global_init(CURL_GLOBAL_ALL);
   if(curl_ret != CURLE_OK)
@@ -374,7 +375,7 @@ void pg_net_worker(Datum main_arg) {
   {
     WaitLatch(&MyProc->procLatch,
           WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
-          1000L,
+          (long)guc_batch_wait,
           PG_WAIT_EXTENSION);
     ResetLatch(&MyProc->procLatch);
 
@@ -453,6 +454,16 @@ _PG_init(void)
                  &guc_batch_size,
                  200,
                  0, PG_INT16_MAX,
+                 PGC_SIGHUP, 0,
+                 NULL, NULL, NULL);
+
+
+  DefineCustomIntVariable("pg_net.batch_wait",
+                 "miliseconds for the background worker to wait",
+                 NULL,
+                 &guc_batch_wait,
+                 1200,
+                 0, PG_INT32_MAX,
                  PGC_SIGHUP, 0,
                  NULL, NULL, NULL);
 
