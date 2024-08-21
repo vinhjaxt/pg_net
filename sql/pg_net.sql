@@ -60,8 +60,8 @@ begin
         where id = request_id;
 
         if rec is null then
-            -- Wait 500 ms before checking again
-            perform pg_sleep(0.5);
+            -- Wait 1200 ms before checking again
+            perform pg_sleep(1.2);
         end if;
     end loop;
 
@@ -122,9 +122,35 @@ begin
 end
 $$;
 
--- Interface to make an async request
+-- Interface to make an async request and wait for response
 -- API: Public
 create or replace procedure net.http_request(
+    -- out value
+    request_id inout bigint,
+    -- method for the request
+    method text,
+    -- url for the request
+    url text,
+    -- body of the POST request
+    body bytea default null,
+    -- key/values to be included in request headers
+    headers jsonb default '{"User-Agent": "-"}'::jsonb,
+    -- the maximum number of milliseconds the request may take before being cancelled
+    timeout_milliseconds int default 7000,
+    -- curl options {"option_int": option_value}
+    curl_opts jsonb default null
+) language plpgsql security definer as $$
+declare
+    request_id bigint;
+begin
+    call net.http_add_queue(request_id, method, url, headers, body, timeout_milliseconds, curl_opts);
+    perform net._await_response(request_id);
+end
+$$;
+
+-- Interface to make an async request
+-- API: Public
+create or replace procedure net.http_add_queue(
     -- out value
     request_id inout bigint,
     -- method for the request
