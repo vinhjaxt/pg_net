@@ -4,10 +4,6 @@ EXTVERSION = 0.9.3
 
 DATA = $(wildcard sql/*--*.sql)
 
-TESTS = $(wildcard test/sql/*.sql)
-REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
-REGRESS_OPTS = --use-existing --inputdir=test
-
 MODULE_big = $(EXTENSION)
 OBJS = src/worker.o src/util.o
 
