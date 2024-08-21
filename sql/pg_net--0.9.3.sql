@@ -6,6 +6,29 @@ select net.worker_restart();
 
 create schema if not exists net;
 
+grant all on schema net to postgres;
+grant all on all tables in schema net to postgres;
+
+-- Lifecycle states of a request (all protocols)
+-- API: Public
+create type net.request_status as enum ('PENDING', 'SUCCESS', 'ERROR');
+
+-- A response from an HTTP server
+-- API: Public
+create type net.http_response AS (
+    status_code integer,
+    headers jsonb,
+    body text
+);
+
+-- State wrapper around responses
+-- API: Public
+create type net.http_response_result as (
+    status net.request_status,
+    message text,
+    response net.http_response
+);
+
 -- Store pending requests. The background worker reads from here
 -- API: Private
 create unlogged table net.http_request_queue(
@@ -17,18 +40,6 @@ create unlogged table net.http_request_queue(
     timeout_milliseconds int not null,
     curl_opts jsonb
 );
-
-create or replace function net.check_worker_is_up() returns void as $$
-begin
-  if not exists (select pid from pg_stat_activity where backend_type ilike '%pg_net%') then
-    raise exception using
-      message = 'the pg_net background worker is not up'
-    , detail  = 'the pg_net background worker is down due to an internal error and cannot process requests'
-    , hint    = 'make sure that you didn''t modify any of pg_net internal tables';
-  end if;
-end
-$$ language plpgsql;
-comment on function net.check_worker_is_up() is 'raises an exception if the pg_net background worker is not up, otherwise it doesn''t return anything';
 
 -- Associates a response with a request
 -- API: Private
@@ -44,36 +55,6 @@ create unlogged table net._http_response(
 );
 
 create index on net._http_response (created);
-
--- Blocks until an http_request is complete
--- API: Private
-create or replace function net._await_response(
-    request_id bigint
-)
-    returns bool
-    volatile
-    parallel safe
-    strict
-    language plpgsql
-as $$
-declare
-    rec net._http_response;
-begin
-    while rec is null loop
-        select *
-        into rec
-        from net._http_response
-        where id = request_id;
-
-        if rec is null then
-            -- Wait 1200 ms before checking again
-            perform pg_sleep(1.2);
-        end if;
-    end loop;
-
-    return true;
-end;
-$$;
 
 -- url encode a string
 -- API: Private
@@ -190,27 +171,35 @@ begin
 end
 $$;
 
--- Lifecycle states of a request (all protocols)
--- API: Public
-create type net.request_status as enum ('PENDING', 'SUCCESS', 'ERROR');
+-- Blocks until an http_request is complete
+-- API: Private
+create or replace function net._await_response(
+    request_id bigint
+)
+    returns bool
+    volatile
+    parallel safe
+    strict
+    language plpgsql
+as $$
+declare
+    rec net._http_response;
+begin
+    while rec is null loop
+        select *
+        into rec
+        from net._http_response
+        where id = request_id;
 
+        if rec is null then
+            -- Wait 1200 ms before checking again
+            perform pg_sleep(1.2);
+        end if;
+    end loop;
 
--- A response from an HTTP server
--- API: Public
-create type net.http_response AS (
-    status_code integer,
-    headers jsonb,
-    body text
-);
-
--- State wrapper around responses
--- API: Public
-create type net.http_response_result as (
-    status net.request_status,
-    message text,
-    response net.http_response
-);
-
+    return true;
+end;
+$$;
 
 -- Collect respones of an http request
 -- API: Private
@@ -289,6 +278,18 @@ begin
 end;
 $$;
 
+create or replace function net.check_worker_is_up() returns void as $$
+begin
+  if not exists (select pid from pg_stat_activity where backend_type ilike '%pg_net%') then
+    raise exception using
+      message = 'the pg_net background worker is not up'
+    , detail  = 'the pg_net background worker is down due to an internal error and cannot process requests'
+    , hint    = 'make sure that you didn''t modify any of pg_net internal tables';
+  end if;
+end
+$$ language plpgsql;
+comment on function net.check_worker_is_up() is 'raises an exception if the pg_net background worker is not up, otherwise it doesn''t return anything';
+
 create or replace function net.worker_restart() returns bool as $$
   select pg_reload_conf();
   select pg_terminate_backend(pid)
@@ -297,6 +298,3 @@ create or replace function net.worker_restart() returns bool as $$
 $$
 security definer
 language sql;
-
-grant all on schema net to postgres;
-grant all on all tables in schema net to postgres;
