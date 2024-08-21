@@ -32,7 +32,7 @@ static void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
                 break;
             }
             default:
-			    elog(ERROR, "curlOpts unrecognized jsonb key type: %d", (int) v->type);
+			    elog(ERROR, "curlOpts unrecognized jsonb key type: %d", (int) jbV->type);
         }
 
         elog(NOTICE, "curlOpts key: %s = %d", (jbV.val.string.val), key);
