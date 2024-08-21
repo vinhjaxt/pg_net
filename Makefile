@@ -5,7 +5,7 @@ EXTVERSION = 0.9.3
 DATA = $(wildcard sql/*--*.sql)
 
 MODULE_big = $(EXTENSION)
-OBJS = src/worker.o src/util.o src/curl_opts.o
+OBJS = src/worker.o src/util.o
 
 all: sql/$(EXTENSION)--$(EXTVERSION).sql $(EXTENSION).control
 
