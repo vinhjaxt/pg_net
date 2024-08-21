@@ -57,7 +57,7 @@ static void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
                 break;
             }
             default:
-			    elog(ERROR, "curlOpts unrecognized jsonb value type: %d", (int) v->type);
+			    elog(ERROR, "curlOpts unrecognized jsonb value type: %d", (int) jbV.type);
         }
 
     }
