@@ -6,10 +6,10 @@ create unlogged table net.http_request_queue(
     id bigserial,
     method text not null,
     url text not null,
-    headers jsonb not null,
+    headers jsonb,
     body bytea,
     timeout_milliseconds int not null,
-    curl_opts jsonb not null
+    curl_opts jsonb
 );
 
 create or replace function net.check_worker_is_up() returns void as $$
@@ -60,15 +60,14 @@ begin
         where id = request_id;
 
         if rec is null then
-            -- Wait 50 ms before checking again
-            perform pg_sleep(0.05);
+            -- Wait 500 ms before checking again
+            perform pg_sleep(0.5);
         end if;
     end loop;
 
     return true;
 end;
 $$;
-
 
 -- url encode a string
 -- API: Private
@@ -90,36 +89,27 @@ create or replace function net._encode_url_with_params_array(url text, params_ar
     immutable
 as 'pg_net';
 
+create or replace function net.net_curl_version()
+    returns text
+    strict
+    language 'c'
+    immutable
+as 'pg_net';
 
--- Interface to make an async request
--- API: Public
-create or replace function net.http_request(
-    -- method for the request
-    method text,
+create or replace function net.url_params(
     -- url for the request
     url text,
-    -- body of the POST request
-    body bytea default null,
     -- key/value pairs to be url encoded and appended to the `url`
-    params jsonb default '{}'::jsonb,
-    -- key/values to be included in request headers
-    headers jsonb default '{"User-Agent": "-"}'::jsonb,
-    -- the maximum number of milliseconds the request may take before being cancelled
-    timeout_milliseconds int DEFAULT 5000,
-
-    curl_opts jsonb default '{}'::jsonb
+    params jsonb default '{}'::jsonb
 )
-    -- request_id reference
-    returns bigint
+    returns text
     volatile
     parallel safe
     language plpgsql
     security definer
 as $$
 declare
-    request_id bigint;
     params_array text[];
-    content_type text;
 begin
     select
         coalesce(array_agg(net._urlencode_string(key) || '=' || net._urlencode_string(value)), '{}')
@@ -128,20 +118,37 @@ begin
     from
         jsonb_each_text(params);
 
-    -- Add to the request queue
+    return net._encode_url_with_params_array(url, params_array);
+end
+$$;
+
+-- Interface to make an async request
+-- API: Public
+create or replace procedure net.http_request(
+    -- out value
+    request_id inout bigint,
+    -- method for the request
+    method text,
+    -- url for the request
+    url text,
+    -- body of the POST request
+    body bytea default null,
+    -- key/values to be included in request headers
+    headers jsonb default '{"User-Agent": "-"}'::jsonb,
+    -- the maximum number of milliseconds the request may take before being cancelled
+    timeout_milliseconds int default 7000,
+    -- curl options {"option_int": option_value}
+    curl_opts jsonb default null
+) language plpgsql security definer as $$
+declare
+    params_array text[];
+    content_type text;
+begin
     insert into net.http_request_queue(method, url, headers, body, timeout_milliseconds, curl_opts)
-    values (
-        method,
-        net._encode_url_with_params_array(url, params_array),
-        headers,
-        body,
-        timeout_milliseconds,
-        curl_opts
-    )
+    values (method, url, headers, body, timeout_milliseconds, curl_opts)
     returning id
     into request_id;
-
-    return request_id;
+    commit;
 end
 $$;
 

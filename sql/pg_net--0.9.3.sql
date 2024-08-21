@@ -90,6 +90,12 @@ create or replace function net._encode_url_with_params_array(url text, params_ar
     immutable
 as 'pg_net';
 
+create or replace function net.net_curl_version()
+    returns text
+    strict
+    language 'c'
+    immutable
+as 'pg_net';
 
 -- Interface to make an async request
 -- API: Public
