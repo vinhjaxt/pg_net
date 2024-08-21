@@ -1,5 +1,4 @@
 create schema if not exists net;
-CREATE EXTENSION pg_net;
 
 -- Store pending requests. The background worker reads from here
 -- API: Private
