@@ -1,8 +1,6 @@
 #include <postgres.h>
 
 #include <stdlib.h>
-#include <tcop/utility.h>
-#include <utils/builtins.h>
 #include "utils/jsonb.h"
 #include "utils/numeric.h"
 
@@ -10,7 +8,7 @@
 
 #include "curl_opts.h"
 
-static void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
+void curl_opts_set_on(CURL *curl_ez_handle, Jsonb *curlOpts) {
     JsonbIteratorToken jbItk;
     JsonbValue  jbV;
     JsonbIterator *jbIt;
