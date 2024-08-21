@@ -124,9 +124,7 @@ $$;
 
 -- Interface to make an async request and wait for response
 -- API: Public
-create or replace procedure net.http_request(
-    -- out value
-    request_id inout bigint,
+create or replace function net.http_request(
     -- method for the request
     method text,
     -- url for the request
@@ -139,12 +137,20 @@ create or replace procedure net.http_request(
     timeout_milliseconds int default 7000,
     -- curl options {"option_int": option_value}
     curl_opts jsonb default null
-) language plpgsql security definer as $$
+)
+    -- http response composite wrapped in a result type
+    returns net.http_response_result
+    strict
+    volatile
+    parallel safe
+    language plpgsql
+    security definer
+as $$
 declare
     request_id bigint;
 begin
     call net.http_add_queue(request_id, method, url, headers, body, timeout_milliseconds, curl_opts);
-    perform net._await_response(request_id);
+    return net._http_collect_response(request_id, true);
 end
 $$;
 
